@@ -1,3 +1,8 @@
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
+use std::{io, vec};
+
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use response::key::KeyResponse;
 use response::keys::CharacterProfile;
@@ -78,6 +83,7 @@ const BASE_URL: &str = "https://raider.io/api/v1";
 enum Error {
     Reqwest(reqwest::Error),
     Json(serde_json::Error),
+    Io(io::Error),
 }
 
 impl From<reqwest::Error> for Error {
@@ -88,6 +94,12 @@ impl From<reqwest::Error> for Error {
 impl From<serde_json::Error> for Error {
     fn from(value: serde_json::Error) -> Self {
         Self::Json(value)
+    }
+}
+
+impl From<io::Error> for Error {
+    fn from(value: io::Error) -> Self {
+        Self::Io(value)
     }
 }
 
@@ -129,6 +141,28 @@ where
     Ok(res)
 }
 
+fn sort_roster(roster: &mut Vec<response::key::Roster>) {
+    roster.sort_by_key(|roster| match roster.role.as_str() {
+        "tank" => 0,
+        "healer" => 1,
+        _ => 2,
+    });
+}
+#[derive(serde::Serialize)]
+struct CachedKey {
+    id: i64,
+    num_chests: i64,
+    level: i64,
+    dungeon_name: String,
+    roster: Vec<KeyMember>,
+}
+#[derive(serde::Serialize)]
+struct KeyMember {
+    role: String,
+    item_level: i64,
+    character_name: String,
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let cli = Cli::parse();
@@ -168,12 +202,7 @@ async fn main() -> Result<(), Error> {
                 num_chests, json.mythic_level, json.dungeon.name
             );
 
-            json.roster
-                .sort_by_key(|roster| match roster.role.as_str() {
-                    "tank" => 0,
-                    "healer" => 1,
-                    _ => 2,
-                });
+            sort_roster(&mut json.roster);
 
             for member in &json.roster {
                 println!(
@@ -181,6 +210,30 @@ async fn main() -> Result<(), Error> {
                     member.role, member.items.item_level_equipped, member.character.name
                 );
             }
+
+            let mut sorted_key_roster: Vec<KeyMember> = Vec::with_capacity(json.roster.len());
+
+            for index in 0..json.roster.len() {
+                let new_member = KeyMember {
+                    role: json.roster[index].role.clone(),
+                    item_level: json.roster[index].items.item_level_equipped.clone(),
+                    character_name: json.roster[index].character.name.clone(),
+                };
+                sorted_key_roster.push(new_member);
+            }
+
+            let cached_key = CachedKey {
+                id: json.keystone_run_id,
+                num_chests: json.num_chests,
+                level: json.mythic_level,
+                dungeon_name: json.dungeon.name,
+                roster: sorted_key_roster,
+            };
+
+            let json_string = serde_json::to_string_pretty(&cached_key).unwrap();
+            let path = Path::new("cache.json");
+            let mut cache_file = File::create(&path)?;
+            cache_file.write_all(json_string.as_bytes())?;
         }
     }
     Ok(())
