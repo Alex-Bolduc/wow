@@ -1,3 +1,4 @@
+use std::fmt;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -148,7 +149,7 @@ fn sort_roster(roster: &mut Vec<response::key::Roster>) {
         _ => 2,
     });
 }
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct CachedKey {
     id: i64,
     num_chests: i64,
@@ -156,11 +157,37 @@ struct CachedKey {
     dungeon_name: String,
     roster: Vec<KeyMember>,
 }
-#[derive(serde::Serialize)]
+
+impl fmt::Display for CachedKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let num_chests: String = (0..self.num_chests).map(|_| "+").collect();
+        write!(
+            f,
+            "{}{} - {}\n\n",
+            num_chests, self.level, self.dungeon_name
+        )?;
+        for member in &self.roster {
+            write!(f, "{}\n", member)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 struct KeyMember {
     role: String,
     item_level: i64,
     character_name: String,
+}
+
+impl fmt::Display for KeyMember {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}\t{}\t{}",
+            self.role, self.item_level, self.character_name
+        )
+    }
 }
 
 #[tokio::main]
@@ -188,6 +215,8 @@ async fn main() -> Result<(), Error> {
             }
         }
         Commands::Key(args) => {
+            let path = Path::new("cache.json");
+
             let url = format!(
                 "{}/mythic-plus/run-details?season=season-tww-2&id={}",
                 BASE_URL, args.id
@@ -197,19 +226,7 @@ async fn main() -> Result<(), Error> {
 
             let num_chests: String = (0..json.num_chests).map(|_| "+").collect();
 
-            println!(
-                "{}{} - {}\n",
-                num_chests, json.mythic_level, json.dungeon.name
-            );
-
             sort_roster(&mut json.roster);
-
-            for member in &json.roster {
-                println!(
-                    "{}\t{}\t{}",
-                    member.role, member.items.item_level_equipped, member.character.name
-                );
-            }
 
             let mut sorted_key_roster: Vec<KeyMember> = Vec::with_capacity(json.roster.len());
 
@@ -223,17 +240,20 @@ async fn main() -> Result<(), Error> {
             }
 
             let cached_key = CachedKey {
-                id: json.keystone_run_id,
-                num_chests: json.num_chests,
-                level: json.mythic_level,
-                dungeon_name: json.dungeon.name,
-                roster: sorted_key_roster,
+                id: json.keystone_run_id.clone(),
+                num_chests: json.num_chests.clone(),
+                level: json.mythic_level.clone(),
+                dungeon_name: json.dungeon.name.clone(),
+                roster: sorted_key_roster.clone(),
             };
 
             let json_string = serde_json::to_string_pretty(&cached_key).unwrap();
-            let path = Path::new("cache.json");
+
             let mut cache_file = File::create(&path)?;
             cache_file.write_all(json_string.as_bytes())?;
+
+            let rust_string: CachedKey = serde_json::from_str(&json_string).unwrap();
+            println!("{}", rust_string);
         }
     }
     Ok(())
