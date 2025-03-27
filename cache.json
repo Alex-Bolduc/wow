@@ -1,33 +1,68 @@
-{
-  "id": 4628110,
-  "num_chests": 2,
-  "level": 11,
-  "dungeon_name": "Darkflame Cleft",
-  "roster": [
-    {
-      "role": "tank",
-      "item_level": 645,
-      "character_name": "Tacostruck"
-    },
-    {
-      "role": "healer",
-      "item_level": 659,
-      "character_name": "Ghostpriest"
-    },
-    {
-      "role": "dps",
-      "item_level": 657,
-      "character_name": "Jardom"
-    },
-    {
-      "role": "dps",
-      "item_level": 658,
-      "character_name": "Spicyboii"
-    },
-    {
-      "role": "dps",
-      "item_level": 656,
-      "character_name": "Nthrxxsr"
-    }
-  ]
-}
+[
+  {
+    "id": 4628110,
+    "num_chests": 2,
+    "level": 11,
+    "dungeon_name": "Darkflame Cleft",
+    "roster": [
+      {
+        "role": "tank",
+        "item_level": 645,
+        "character_name": "Tacostruck"
+      },
+      {
+        "role": "healer",
+        "item_level": 659,
+        "character_name": "Ghostpriest"
+      },
+      {
+        "role": "dps",
+        "item_level": 657,
+        "character_name": "Jardom"
+      },
+      {
+        "role": "dps",
+        "item_level": 658,
+        "character_name": "Spicyboii"
+      },
+      {
+        "role": "dps",
+        "item_level": 656,
+        "character_name": "Nthrxxsr"
+      }
+    ]
+  },
+  {
+    "id": 4616738,
+    "num_chests": 0,
+    "level": 12,
+    "dungeon_name": "Priory of the Sacred Flame",
+    "roster": [
+      {
+        "role": "tank",
+        "item_level": 645,
+        "character_name": "Tacostruck"
+      },
+      {
+        "role": "healer",
+        "item_level": 659,
+        "character_name": "Ghostpriest"
+      },
+      {
+        "role": "dps",
+        "item_level": 658,
+        "character_name": "Spicyboii"
+      },
+      {
+        "role": "dps",
+        "item_level": 660,
+        "character_name": "Brassnovate"
+      },
+      {
+        "role": "dps",
+        "item_level": 657,
+        "character_name": "Jardom"
+      }
+    ]
+  }
+]

@@ -1,13 +1,13 @@
+use clap::{Args, Parser, Subcommand, ValueEnum};
+use response::key::KeyResponse;
+use response::keys::CharacterProfile;
+use serde::Deserialize;
+use serde_json::error;
 use std::fmt;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::{io, vec};
-
-use clap::{Args, Parser, Subcommand, ValueEnum};
-use response::key::KeyResponse;
-use response::keys::CharacterProfile;
-use serde::Deserialize;
 
 mod response;
 
@@ -37,7 +37,7 @@ struct KeysCmd {
 #[derive(Args, Debug)]
 struct KeyCmd {
     #[clap(short, long)]
-    pub id: usize,
+    pub id: i64,
 }
 
 #[derive(Debug, ValueEnum, Clone)]
@@ -149,7 +149,39 @@ fn sort_roster(roster: &mut Vec<response::key::Roster>) {
         _ => 2,
     });
 }
-#[derive(serde::Serialize, serde::Deserialize)]
+
+async fn cache_new_key(args: &KeyCmd) -> Result<CachedKey, Error> {
+    let url = format!(
+        "{}/mythic-plus/run-details?season=season-tww-2&id={}",
+        BASE_URL, args.id
+    );
+
+    let mut json: KeyResponse = get_rio(&url).await?;
+
+    sort_roster(&mut json.roster);
+
+    let mut sorted_key_roster: Vec<KeyMember> = Vec::with_capacity(json.roster.len());
+
+    for roster_member in json.roster {
+        let new_member = KeyMember {
+            role: roster_member.role.clone(),
+            item_level: roster_member.items.item_level_equipped.clone(),
+            character_name: roster_member.character.name.clone(),
+        };
+        sorted_key_roster.push(new_member);
+    }
+
+    let cached_key = CachedKey {
+        id: json.keystone_run_id.clone(),
+        num_chests: json.num_chests.clone(),
+        level: json.mythic_level.clone(),
+        dungeon_name: json.dungeon.name.clone(),
+        roster: sorted_key_roster.clone(),
+    };
+    Ok(cached_key)
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 struct CachedKey {
     id: i64,
     num_chests: i64,
@@ -217,44 +249,55 @@ async fn main() -> Result<(), Error> {
         Commands::Key(args) => {
             let path = Path::new("cache.json");
 
-            let url = format!(
-                "{}/mythic-plus/run-details?season=season-tww-2&id={}",
-                BASE_URL, args.id
-            );
-
-            let mut json: KeyResponse = get_rio(&url).await?;
-
-            let num_chests: String = (0..json.num_chests).map(|_| "+").collect();
-
-            sort_roster(&mut json.roster);
-
-            let mut sorted_key_roster: Vec<KeyMember> = Vec::with_capacity(json.roster.len());
-
-            for index in 0..json.roster.len() {
-                let new_member = KeyMember {
-                    role: json.roster[index].role.clone(),
-                    item_level: json.roster[index].items.item_level_equipped.clone(),
-                    character_name: json.roster[index].character.name.clone(),
+            if path.exists() {
+                let cache_content = tokio::fs::read_to_string(path).await?;
+                let mut cached_keys: Vec<CachedKey> = match serde_json::from_str(&cache_content) {
+                    Ok(cached_keys) => cached_keys,
+                    Err(_error) => {
+                        println!("The cache has been compromised, flushing it down the drain!\n");
+                        #[cfg(debug_assertions)]
+                        let json_string =
+                            serde_json::to_string_pretty(&Vec::<CachedKey>::new()).unwrap();
+                        #[cfg(not(debug_assertions))]
+                        let json_string = serde_json::to_string(&Vec::<CachedKey>::new()).unwrap();
+                        let mut cache_file = File::create(&path)?;
+                        cache_file.write_all(json_string.as_bytes())?;
+                        Vec::<CachedKey>::new()
+                    }
                 };
-                sorted_key_roster.push(new_member);
+                let mut key_already_exists = false;
+
+                for key in &mut cached_keys {
+                    if key.id == args.id {
+                        key_already_exists = true;
+                        println!("{}", key);
+                        break;
+                    }
+                }
+                if !key_already_exists {
+                    let cached_key = cache_new_key(args).await.unwrap();
+                    println!("{}", cached_key);
+                    cached_keys.push(cached_key);
+                    let json_string = serde_json::to_string_pretty(&cached_keys).unwrap();
+                    let mut cache_file = File::create(&path)?;
+                    cache_file.write_all(json_string.as_bytes())?;
+                }
+            } else {
+                let cached_key = cache_new_key(args).await.unwrap();
+                println!("{}", cached_key);
+                let json_string = serde_json::to_string_pretty(&vec![&cached_key]).unwrap();
+                let mut cache_file = File::create(&path)?;
+                cache_file.write_all(json_string.as_bytes())?;
             }
-
-            let cached_key = CachedKey {
-                id: json.keystone_run_id.clone(),
-                num_chests: json.num_chests.clone(),
-                level: json.mythic_level.clone(),
-                dungeon_name: json.dungeon.name.clone(),
-                roster: sorted_key_roster.clone(),
-            };
-
-            let json_string = serde_json::to_string_pretty(&cached_key).unwrap();
-
-            let mut cache_file = File::create(&path)?;
-            cache_file.write_all(json_string.as_bytes())?;
-
-            let rust_string: CachedKey = serde_json::from_str(&json_string).unwrap();
-            println!("{}", rust_string);
         }
     }
     Ok(())
 }
+
+//COMMENTAIRES
+//unwrap() (own error type if possible for serde_json::Error vs io::Error)
+//Async fs
+//HashMap O(1) over Vec O(n)
+//Process invalid cases first and produce right output to not duplicate code + Careful about indentation (guard clauses)
+//serde_json::to_string not pretty (Save disk space)
+//config path, do not use relative paths
